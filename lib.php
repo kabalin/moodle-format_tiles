@@ -1109,8 +1109,19 @@ function format_tiles_pluginfile($course, $cm, $context, $filearea, $args, $forc
 function format_tiles_output_fragment_get_single_section_page($args) {
     global $PAGE, $SESSION;
 
-    // Context permission for the course is checked in fragment webservice.
-    // TODO: check section permissions also.
+    // Course context permission is checked in fragment webservice.
+    $course = get_course($args['courseid']);
+    $modinfo = get_fast_modinfo($course);
+    $coursesection = $modinfo->get_section_info($args['sectionid'], MUST_EXIST);
+
+    // Check user is allowed to see the section.
+    if (!$coursesection->uservisible) {
+        // Note: We actually already know they don't have this capability
+        // or uservisible would have been true; this is just to get the
+        // correct error thrown.
+        $context = $args['context'];
+        require_capability('moodle/course:viewhiddensections', $context);
+    }
 
     $course = get_course($args['courseid']);
     $renderer = $PAGE->get_renderer('format_tiles');
