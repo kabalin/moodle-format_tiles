@@ -29,8 +29,8 @@
  */
 
 define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
-        "core/notification", "core/str", "format_tiles/tile_fitter"],
-    function ($, Templates, ajax, browserStorage, Notification, str, tileFitter) {
+        "core/notification", "core/str", "format_tiles/tile_fitter", 'core/fragment'],
+    function ($, Templates, ajax, browserStorage, Notification, str, tileFitter, Fragment) {
         "use strict";
 
         var body = $("body");
@@ -45,6 +45,7 @@ define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
         var reopenLastVisitedSection = false;
         var backDropZIndex = 0;
         var courseId;
+        var courseContextId;
         var resizeLocked = false;
         var enableCompletion;
 
@@ -474,14 +475,12 @@ define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
          * @return {Promise} promise to resolve when the ajax call returns.
          */
         var getSectionContentFromServer = function (courseId, sectionNum) {
-            return ajax.call([{
-                methodname: "format_tiles_get_single_section_page_html",
-                args: {
-                    courseid: courseId,
-                    sectionid: sectionNum,
-                    setjsusedsession: true
-                }
-            }])[0];
+            const args = {
+                courseid: courseId,
+                sectionid: sectionNum,
+                setjsusedsession: true
+            };
+            return Fragment.loadFragment('format_tiles', 'get_single_section_page', courseContextId, args);
         };
 
         /**
@@ -612,14 +611,16 @@ define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
                 expandSection(relatedContentArea, dataSection);
 
                 // Still contact the server in case content has changed (e.g. restrictions now satisfied).
-                getSectionContentFromServer(courseId, dataSection).done(function (response) {
-                    setCourseContentHTML(relatedContentArea, $(response.html).html());
+                getSectionContentFromServer(courseId, dataSection).done(function (html, js) {
+                    setCourseContentHTML(relatedContentArea, html);
+                    Templates.runTemplateJS(js);
                 });
             } else {
                 relatedContentArea.html(loadingIconHtml);
                 // Get from server.
-                getSectionContentFromServer(courseId, dataSection).done(function (response) {
-                    setCourseContentHTML(relatedContentArea, $(response.html).html());
+                getSectionContentFromServer(courseId, dataSection).done(function (html, js) {
+                    setCourseContentHTML(relatedContentArea, html);
+                    Templates.runTemplateJS(js);
                     expandSection(relatedContentArea, dataSection);
                 }).fail(function (failResult) {
                     failedLoadSectionNotify(dataSection, failResult, relatedContentArea);
@@ -632,6 +633,7 @@ define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
         return {
             init: function (
                 courseIdInit,
+                courseContextIdInit,
                 useJavascriptNav, // Set by site admin see settings.php.
                 isMobileInit,
                 sectionNum,
@@ -640,9 +642,10 @@ define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
                 reopenLastSectionInit, // Set by site admin see settings.php.
                 userId,
                 fitTilesToWidth,
-                enableCompletionInit
+                enableCompletionInit,
             ) {
                 courseId = courseIdInit;
+                courseContextId = courseContextIdInit;
                 isMobile = isMobileInit;
                 // Some args are strings or ints but we prefer bool.  Change to bool now as they are passed on elsewhere.
                 reopenLastVisitedSection = reopenLastSectionInit === "1";
@@ -725,11 +728,9 @@ define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
                             var nextSecIfExists = $(Selector.SECTION_ID + (dataSection + 1));
                             const usingH5pFilter = $('.filters-config[data-filter="h5p"]').length === 1;
                             if (!isMobile && !usingH5pFilter && nextSecIfExists.length && dataSection > 0) {
-                                getSectionContentFromServer(courseId, dataSection + 1).done(function(response) {
-                                    setCourseContentHTML(
-                                        nextSecIfExists,
-                                        $(response.html).html()
-                                    );
+                                getSectionContentFromServer(courseId, dataSection + 1).done(function(html, js) {
+                                    setCourseContentHTML(nextSecIfExists, html);
+                                    Templates.runTemplateJS(js);
                                 });
                             }
                         });
@@ -822,46 +823,33 @@ define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
                         }).toArray();
                         // Need to include sec zero as may have completion tracked items.
                         allSectionNums.push(0);
-                        const requests = ajax.call([
-                            {
-                                methodname: "format_tiles_get_single_section_page_html",
-                                args: {
-                                    courseid: courseId,
-                                    sectionid: data.section,
-                                    setjsusedsession: true
-                                }
-                            },
-                            {
-                                methodname: "format_tiles_get_section_information",
-                                args: {
-                                    courseid: courseId,
-                                    sectionnums: allSectionNums
-                                }
-                            }
-                        ]);
-                        requests[0]
-                            .done((response) => {
-                                setCourseContentHTML($(Selector.SECTION_ID + data.section), $(response.html).html());
-                            })
-                            .catch(err => {
-                                require(["core/log"], function(log) {
-                                    log.debug(err);
-                                });
-                            });
-                        requests[1]
-                            .done((response) => {
-                                require(["format_tiles/completion"], function (completion) {
-                                    completion.updateSectionsInfo(
-                                        response.sections, response.overall.complete, response.overall.outof
-                                    );
-                                });
 
-                            })
-                            .catch(err => {
-                                require(["core/log"], function(log) {
-                                    log.debug(err);
-                                });
+                        getSectionContentFromServer(courseId, data.section).done(function (html, js) {
+                            setCourseContentHTML($(Selector.SECTION_ID + data.section), html);
+                            Templates.runTemplateJS(js);
+                        }).catch(err => {
+                            require(["core/log"], function(log) {
+                                log.debug(err);
                             });
+                        });
+
+                        ajax.call([{
+                            methodname: "format_tiles_get_section_information",
+                            args: {
+                                courseid: courseId,
+                                sectionnums: allSectionNums
+                            }
+                        }])[0].done((response) => {
+                            require(["format_tiles/completion"], function (completion) {
+                                completion.updateSectionsInfo(
+                                    response.sections, response.overall.complete, response.overall.outof
+                                );
+                            });
+                        }).catch(err => {
+                            require(["core/log"], function(log) {
+                                log.debug(err);
+                            });
+                        });
                     });
 
                     // When the user presses the button to collapse or expand Section zero (section at the top of the course).
