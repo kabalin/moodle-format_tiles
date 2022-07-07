@@ -45,6 +45,7 @@ const FORMAT_TILES_FILTERBAR_OUTCOMES = 2;
 const FORMAT_TILES_FILTERBAR_BOTH = 3;
 
 require_once($CFG->dirroot . '/course/format/lib.php');
+require_once($CFG->dirroot . '/course/format/tiles/locallib.php');
 
 /**
  * Main class for the course format Tiles
@@ -1051,4 +1052,50 @@ function format_tiles_pluginfile($course, $cm, $context, $filearea, $args, $forc
     $filename = $args[2];
     $file = $fs->get_file($context->id, $fileapiparams['component'], $filearea, $sectionid, $filepath, $filename);
     send_stored_file($file, 86400, 0, $forcedownload, $options);
+}
+
+/**
+ * Get the HTML for a single section page for a course in a fragment output
+ * (i.e. the list of activities and resources comprising the contents of a tile)
+ * Intended to be called from AJAX so that the result can be added to the multi
+ * tiles page by JS
+ *
+ * The method returns the HTML rather than the underlying course data to save making
+ * another round trip to the server to render the HTML from the data, via the mustache
+ * template. This would have been another way of doing it, and would be easy to achieve
+ * by calling the template from JS.
+ *
+ * @param array $args The fragment arguments.
+ * @return string The page content.
+ */
+function format_tiles_output_fragment_get_single_section_page($args) {
+    global $PAGE, $SESSION;
+
+    // Course context permission is checked in fragment webservice.
+    $course = get_course($args['courseid']);
+    $modinfo = get_fast_modinfo($course);
+    $coursesection = $modinfo->get_section_info($args['sectionid'], MUST_EXIST);
+
+    // Check user is allowed to see the section.
+    if (!$coursesection->uservisible) {
+        // Note: We actually already know they don't have this capability
+        // or uservisible would have been true; this is just to get the
+        // correct error thrown.
+        $context = $args['context'];
+        require_capability('moodle/course:viewhiddensections', $context);
+    }
+
+    $course = get_course($args['courseid']);
+    $renderer = $PAGE->get_renderer('format_tiles');
+    $templateable = new \format_tiles\output\course_output($course, true, $args['sectionid']);
+    $data = $templateable->export_for_template($renderer);
+
+    // This session var is used later, when user revisits main course page, or a single section, for a course using this format.
+    // If set to true, the page can safely be rendered from PHP in the javascript friendly format.
+    // (A <noscript> box will be displayed only to users who have JS disabled with a link to switch to non JS format).
+    if ($args['setjsusedsession']) {
+        $SESSION->format_tiles_jssuccessfullyused = 1;
+    }
+    $template = $args['sectionid'] == 0 ? 'format_tiles/section_zero' : 'format_tiles/single_section';
+    return $renderer->render_from_template($template, $data);
 }

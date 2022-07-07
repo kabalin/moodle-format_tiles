@@ -100,6 +100,7 @@ $allowedmodmodals = format_tiles_allowed_modal_modules();
 
 $jsparams = array(
     'courseId' => $course->id,
+    'courseContextId' => $context->id,
     'useJSNav' => $usejsnav, // See also lib.php page_set_course().
     'isMobile' => $ismobile,
     'jsSectionNum' => $jssectionnum,

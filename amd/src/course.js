@@ -27,8 +27,8 @@
  */
 
 define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
-        "core/notification", "core/str", "format_tiles/tile_fitter"],
-    function ($, Templates, ajax, browserStorage, Notification, str, tileFitter) {
+        "core/notification", "core/str", "format_tiles/tile_fitter", 'core/fragment'],
+    function ($, Templates, ajax, browserStorage, Notification, str, tileFitter, Fragment) {
         "use strict";
 
         var isMobile;
@@ -39,6 +39,7 @@ define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
         var HEADER_BAR_HEIGHT = 60; // This varies by theme and version so will be reset once pages loads below.
         var reopenLastVisitedSection = false;
         var courseId;
+        var courseContextId;
         var resizeLocked = false;
         var enableCompletion;
 
@@ -194,6 +195,8 @@ define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
         var setCourseContentHTML = function (contentArea, content, js) {
             if (content) {
                 contentArea.html(content);
+                Templates.runTemplateJS(js);
+
                 $(Selector.TILE_LOADING_ICON).fadeOut(300, function () {
                     $(Selector.TILE_LOADING_ICON).html("");
                 });
@@ -266,17 +269,6 @@ define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
                             });
                         }
                     }, 500);
-                }
-                // As we have just loaded new content, ensure that we initialise videoJS media player if required.
-                if (contentArea.find(Selector.MOODLE_VIDEO).length !== 0) {
-                    require(["media_videojs/loader"], function(videoJS) {
-                        videoJS.setUp();
-                    });
-                }
-
-                // Some modules e.g. mod_unilabel need JS initialising when added to the page.
-                if (js && js.length) {
-                    contentArea.append(js);
                 }
 
                 setTimeout(() => {
@@ -491,7 +483,7 @@ define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
             } else {
                 // It looks like we may not have a connection so we can't launch notifications.
                 // We can warn the user like this instead.
-                setCourseContentHTML(contentArea, "<p>" + stringStore.noconnectionerror + "</p>", '');
+                setCourseContentHTML(contentArea, "<p>" + stringStore.noconnectionerror + "</p>");
                 setTimeout(function () {
                     expandSection(contentArea, sectionNum);
                 }, 500);
@@ -506,17 +498,16 @@ define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
          * For a given section, get the content from the server, add it to the store and maybe UI and maybe show it
          * @param {number} courseId the id for the affected course
          * @param {number} sectionNum the section number we are wanting to populate
+         * @param {boolean} setJsUsedSession Sets format_tiles_jssuccessfullyused session flag.
          * @return {Promise} promise to resolve when the ajax call returns.
          */
-        var getSectionContentFromServer = function (courseId, sectionNum) {
-            return ajax.call([{
-                methodname: "format_tiles_get_single_section_page_html",
-                args: {
-                    courseid: courseId,
-                    sectionid: sectionNum,
-                    setjsusedsession: true
-                }
-            }])[0];
+        var getSectionContentFromServer = function (courseId, sectionNum, setJsUsedSession) {
+            const args = {
+                courseid: courseId,
+                sectionid: sectionNum,
+                setjsusedsession: setJsUsedSession ?? true,
+            };
+            return Fragment.loadFragment('format_tiles', 'get_single_section_page', courseContextId, args);
         };
 
         /**
@@ -573,14 +564,14 @@ define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
                 expandSection(relatedContentArea, dataSection);
 
                 // Still contact the server in case content has changed (e.g. restrictions now satisfied).
-                getSectionContentFromServer(courseId, dataSection).done(function (response) {
-                    setCourseContentHTML(relatedContentArea, $(response.html).html(), response.js);
+                getSectionContentFromServer(courseId, dataSection).done(function (html, js) {
+                    setCourseContentHTML(relatedContentArea, html, js);
                 });
             } else {
                 relatedContentArea.html(loadingIconHtml);
                 // Get from server.
-                getSectionContentFromServer(courseId, dataSection).done(function (response) {
-                    setCourseContentHTML(relatedContentArea, $(response.html).html(), response.js);
+                getSectionContentFromServer(courseId, dataSection).done(function (html, js) {
+                    setCourseContentHTML(relatedContentArea, html, js);
                     expandSection(relatedContentArea, dataSection);
                 }).fail(function (failResult) {
                     failedLoadSectionNotify(dataSection, failResult, relatedContentArea);
@@ -593,6 +584,7 @@ define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
         return {
             init: function (
                 courseIdInit,
+                courseContextIdInit,
                 useJavascriptNav, // Set by site admin see settings.php.
                 isMobileInit,
                 sectionNum,
@@ -601,9 +593,10 @@ define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
                 reopenLastSectionInit, // Set by site admin see settings.php.
                 userId,
                 fitTilesToWidth,
-                enableCompletionInit
+                enableCompletionInit,
             ) {
                 courseId = courseIdInit;
+                courseContextId = courseContextIdInit;
                 isMobile = isMobileInit;
                 // Some args are strings or ints but we prefer bool.  Change to bool now as they are passed on elsewhere.
                 reopenLastVisitedSection = reopenLastSectionInit === "1";
@@ -740,46 +733,32 @@ define(["jquery", "core/templates", "core/ajax", "format_tiles/browser_storage",
                         // Need to include sec zero as may have completion tracked items.
                         allSectionNums.push(0);
                         const isSingleSectionPage = $('ul#single_section_tiles').length > 0;
-                        const requests = ajax.call([
-                            {
-                                methodname: "format_tiles_get_single_section_page_html",
-                                args: {
-                                    courseid: courseId,
-                                    sectionid: data.section,
-                                    setjsusedsession: !isSingleSectionPage
-                                }
-                            },
-                            {
-                                methodname: "format_tiles_get_section_information",
-                                args: {
-                                    courseid: courseId,
-                                    sectionnums: allSectionNums
-                                }
-                            }
-                        ]);
-                        requests[0]
-                            .done((response) => {
-                                setCourseContentHTML($(Selector.SECTION_ID + data.section), $(response.html).html(), response.js);
-                            })
-                            .catch(err => {
-                                require(["core/log"], function(log) {
-                                    log.debug(err);
-                                });
-                            });
-                        requests[1]
-                            .done((response) => {
-                                require(["format_tiles/completion"], function (completion) {
-                                    completion.updateSectionsInfo(
-                                        response.sections, response.overall.complete, response.overall.outof
-                                    );
-                                });
 
-                            })
-                            .catch(err => {
-                                require(["core/log"], function(log) {
-                                    log.debug(err);
-                                });
+                        getSectionContentFromServer(courseId, data.section, isSingleSectionPage).done(function (html, js) {
+                            setCourseContentHTML($(Selector.SECTION_ID + data.section), html, js);
+                        }).catch(err => {
+                            require(["core/log"], function(log) {
+                                log.debug(err);
                             });
+                        });
+
+                        ajax.call([{
+                            methodname: "format_tiles_get_section_information",
+                            args: {
+                                courseid: courseId,
+                                sectionnums: allSectionNums
+                            }
+                        }])[0].done((response) => {
+                            require(["format_tiles/completion"], function (completion) {
+                                completion.updateSectionsInfo(
+                                    response.sections, response.overall.complete, response.overall.outof
+                                );
+                            });
+                        }).catch(err => {
+                            require(["core/log"], function(log) {
+                                log.debug(err);
+                            });
+                        });
                     });
 
                     if (enableCompletion) {

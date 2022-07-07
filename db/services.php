@@ -46,16 +46,6 @@ $functions = array (
         'loginrequired' => true,
         'capabilities' => 'mod/[modulename]:view'
     ),
-    'format_tiles_get_single_section_page_html' => array(
-        'classname' => 'format_tiles_external',
-        'methodname' => 'get_single_section_page_html',
-        'classpath' => 'course/format/tiles/externallib.php',
-        'description' => 'Get HTML for single section page for this course (i.e. tile contents)',
-        'type' => 'read',
-        'ajax' => true,
-        'loginrequired' => true,
-        'capabilities' => '' // Enrolment check, not capability - see externallib.php.
-    ),
     'format_tiles_log_tile_click' => array(
         'classname' => 'format_tiles_external',
         'methodname' => 'log_tile_click',

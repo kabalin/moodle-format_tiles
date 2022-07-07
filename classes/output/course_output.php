@@ -168,17 +168,7 @@ class course_output implements \renderable, \templatable {
         if (!$this->courserenderer) {
             $this->courserenderer = $output;
         }
-        if ($this->fromajax) {
-            try {
-                // Set current URL and force bootstrap_renderer to initiate moodle page.
-                $PAGE->set_url(new \moodle_url('/course/view.php', ['id' => $this->course->id]));
-                $output->header();
-                $PAGE->start_collecting_javascript_requirements();
-            } catch (\Exception $e) {
-                debugging('Could not start collecing JS requirements');
-            }
 
-        }
         $data = $this->get_basic_data();
         $data = $this->append_section_zero_data($data, $output);
         // We have assembled the "common data" needed for both single and multiple section pages.
@@ -307,7 +297,6 @@ class course_output implements \renderable, \templatable {
         $coursemods = $this->section_course_mods($seczero, $output);
         $data['section_zero']['summary'] = self::temp_format_summary_text($seczero);
         $data['section_zero']['content']['course_modules'] = $coursemods->mods;
-        $data['section_zero']['jsfooter'] = $coursemods->jsfooter;
         $data['section_zero']['secid'] = $this->modinfo->get_section_info(0)->id;
         $data['section_zero']['is_section_zero'] = true;
         $data['section_zero']['tileid'] = 0;
@@ -414,7 +403,6 @@ class course_output implements \renderable, \templatable {
         // The list of activities on the page (HTML).
         $coursemods = $this->section_course_mods($thissection, $output);
         $data['course_modules'] = $coursemods->mods;
-        $data['jsfooter'] = $coursemods->jsfooter;
 
         // If lots of content in this section, we include nav arrows again at bottom of page.
         // But otherwise not as looks odd when no content.
@@ -843,7 +831,7 @@ class course_output implements \renderable, \templatable {
      */
     private function section_course_mods($section, $output): object {
         global $PAGE;
-        $result = (object)['mods' => [], 'jsfooter' => ''];
+        $result = (object)['mods' => []];
         if (!isset($section->section)) {
             debugging("section->section is not set", DEBUG_DEVELOPER);
         }
@@ -857,7 +845,6 @@ class course_output implements \renderable, \templatable {
         }
 
         $previouswaslabel = false;
-        $includejsfooter = false; // See comment below.
         foreach ($cmids as $index => $cmid) {
             $mod = $this->modinfo->get_cm($cmid);
             if ($mod->deletioninprogress) {
@@ -875,24 +862,8 @@ class course_output implements \renderable, \templatable {
                 $result->mods[] = $moduledata;
                 $previouswaslabel = $mod->has_custom_cmlist_item();
             }
-            if ($this->fromajax && $mod->has_custom_cmlist_item()) {
-                // If we are being called from a web service, JS may be added to the page as individual modules are rendered.
-                // E.g. mod_unilabel templates contain {{#js}} helper tags, processed by \core\output\mustache_javascript_helper.
-                // These need to be added to the page, so that content added to the DOM by JS works correctly.
-                // We only need to use this where the module displays inline i.e. $mod->has_custom_cmlist_item() == true.
-                // Using same approach as in \core_external::get_fragment().
-                $includejsfooter = true;
-            }
         }
 
-        // See comment above where $includejsfooter is defined.
-        if ($includejsfooter) {
-            try {
-                $result->jsfooter = $PAGE->requires->get_end_code();
-            } catch (\Exception $e) {
-                debugging('Could not get end code');
-            }
-        }
         return $result;
     }
 
