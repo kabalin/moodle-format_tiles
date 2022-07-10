@@ -29,8 +29,8 @@
  * @since       Moodle 3.3
  */
 
-define(["jquery", "core/modal_factory", "core/config", "core/templates", "core/notification", "core/ajax"],
-    function ($, modalFactory, config, Templates, Notification, ajax) {
+define(["jquery", "core/modal_factory", "core/config", "core/templates", "core/notification", "core/ajax", 'core/fragment'],
+    function ($, modalFactory, config, Templates, Notification, ajax, Fragment) {
         "use strict";
 
         /**
@@ -385,73 +385,69 @@ define(["jquery", "core/modal_factory", "core/config", "core/templates", "core/n
          * @returns {boolean} if successful or not
          */
         var launchCourseActivityModal = function (clickedCmObject) {
-            var cmid = clickedCmObject.attr("data-cmid");
+            var cmid = clickedCmObject.data('cmid');
+            var moduleContextId = clickedCmObject.data('contextid');
             // TODO code envisages potentially adding in other web services for other mod types, but for now we have page only.
-            var methodName = "format_tiles_get_mod_" + clickedCmObject.attr("data-modtype") + "_html";
+            var fragmentName = "get_mod_" + clickedCmObject.data('modtype');
+            var modalRoot;
 
             modalFactory.create({
                 type: modalFactory.types.DEFAULT,
-                title: clickedCmObject.attr("data-title"),
+                title: clickedCmObject.data('title'),
                 body: loadingIconHtml
-            }).done(function (modal) {
+            }).then(function (modal) {
                 modalStore[cmid] = modal;
                 modal.setLarge();
                 modal.show();
-                var modalRoot = $(modal.root);
+                modalRoot = $(modal.root);
                 modalRoot.attr("data-cmid", cmid);
                 modalRoot.attr("id", "embed_mod_modal_" + cmid);
                 modalRoot.addClass("embed_cm_modal");
-                modalRoot.addClass('mod_' + clickedCmObject.attr("data-modtype"));
+                modalRoot.addClass('mod_' + clickedCmObject.data('modtype'));
                 stopAllVideosOnDismiss(modalRoot);
-                ajax.call([{
-                    methodname: methodName,
-                    args: {
-                        courseid: courseId,
-                        cmid: cmid
-                    }
-                }])[0].done(function(response) {
-                    const sectionNum = clickedCmObject.closest(Selector.sectionMain).attr("data-section");
-                    var templateData = {
-                        cmid: cmid,
-                        modtitle: clickedCmObject.attr("data-title"),
-                        tileid: sectionNum,
-                        content: response.html
-                    };
-                    const checkBox = clickedCmObject.find(Selector.completioncheckbox);
-                    if (checkBox.length !== 0) {
-                        templateData.completionstate = clickedCmObject.hasClass(CLASS.COMPLETION_AUTO)
-                            ? 1 : parseInt(checkBox.attr('data-completionstate'));
-                        templateData.completionInUseForCm = 1;
-                        templateData.completionicon = templateData.completionstate === 1 ? 'y' : 'n';
-                        templateData.completionstateInverse = 1 - templateData.completionstate;
-                        templateData.completionIsManual = clickedCmObject.hasClass(CLASS.COMPLETION_MANUAL);
-                        templateData.completionstring = checkBox.attr('title');
-                        // Trigger event to check if other items in course have updated availability.
-                        require(["format_tiles/completion"], function (completion) {
-                            completion.triggerCompletionChangedEvent(sectionNum);
-                        });
-                    }
-                    modal.setBody(templateData.content);
-                    Templates.render("format_tiles/embed_module_modal_header_btns", templateData).done(function (html) {
-                        modalRoot.find(Selector.modalHeader).append(html);
-                        modalRoot.find(Selector.closeBtn).detach().appendTo(modalRoot.find(Selector.embedModuleButtons));
-                    }).fail(Notification.exception);
+                return Fragment.loadFragment('format_tiles', fragmentName, moduleContextId, {});
+            }).then(function(html, js) {
+                const sectionNum = clickedCmObject.closest(Selector.sectionMain).data('section');
+                var templateData = {
+                    cmid: cmid,
+                    modtitle: clickedCmObject.data('title'),
+                    tileid: sectionNum,
+                    content: html
+                };
+                const checkBox = clickedCmObject.find(Selector.completioncheckbox);
+                if (checkBox.length !== 0) {
+                    templateData.completionstate = clickedCmObject.hasClass(CLASS.COMPLETION_AUTO)
+                        ? 1 : parseInt(checkBox.data('completionstate'));
+                    templateData.completionInUseForCm = 1;
+                    templateData.completionicon = templateData.completionstate === 1 ? 'y' : 'n';
+                    templateData.completionstateInverse = 1 - templateData.completionstate;
+                    templateData.completionIsManual = clickedCmObject.hasClass(CLASS.COMPLETION_MANUAL);
+                    templateData.completionstring = checkBox.attr('title');
+                    // Trigger event to check if other items in course have updated availability.
+                    require(["format_tiles/completion"], function (completion) {
+                        completion.triggerCompletionChangedEvent(sectionNum);
+                    });
+                }
+                modalStore[cmid].setBody(templateData.content);
+                Templates.runTemplateJS(js);
+                Templates.render("format_tiles/embed_module_modal_header_btns", templateData).done(function (html) {
+                    modalRoot.find(Selector.modalHeader).append(html);
+                    modalRoot.find(Selector.closeBtn).detach().appendTo(modalRoot.find(Selector.embedModuleButtons));
+                }).fail(Notification.exception);
 
-                    // Allow a short delay before we resize the modal, and check a few times, as content may be loading.
-                    setTimeout(() => {
-                        modalHeightChangeWatcher(modalRoot, 3, 1000);
-                    }, 500);
+                // Allow a short delay before we resize the modal, and check a few times, as content may be loading.
+                setTimeout(() => {
+                    modalHeightChangeWatcher(modalRoot, 3, 1000);
+                }, 500);
 
-
-                    return true;
-                }).fail(function(ex) {
-                    if (config.developerdebug !== true) {
-                        // Load the activity using PHP instead.
-                        window.location = config.wwwroot + "/mod/" + clickedCmObject.attr("data-modtype") + "/view.php?id=" + cmid;
-                    } else {
-                        Notification.exception(ex);
-                    }
-                });
+                return;
+            }).fail(function(ex) {
+                if (config.developerdebug !== true) {
+                    // Load the activity using PHP instead.
+                    window.location = config.wwwroot + "/mod/" + clickedCmObject.attr("data-modtype") + "/view.php?id=" + cmid;
+                } else {
+                    Notification.exception(ex);
+                }
             });
             return false;
         };

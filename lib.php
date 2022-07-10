@@ -1119,8 +1119,7 @@ function format_tiles_output_fragment_get_single_section_page($args) {
         // Note: We actually already know they don't have this capability
         // or uservisible would have been true; this is just to get the
         // correct error thrown.
-        $context = $args['context'];
-        require_capability('moodle/course:viewhiddensections', $context);
+        require_capability('moodle/course:viewhiddensections', $args['context']);
     }
 
     $course = get_course($args['courseid']);
@@ -1136,4 +1135,35 @@ function format_tiles_output_fragment_get_single_section_page($args) {
     }
     $template = $args['sectionid'] == 0 ? 'format_tiles/section_zero' : 'format_tiles/single_section';
     return $renderer->render_from_template($template, $data);
+}
+
+/**
+ * Get the HTML for a single page for display in a modal window.
+ *
+ * @param array $args The fragment arguments.
+ * @return string The page content.
+ */
+function format_tiles_output_fragment_get_mod_page($args) {
+    global $DB, $PAGE;
+
+    // Module context permission is checked in fragment webservice.
+    $modcontext = context::instance_by_id($args['context']->id);
+    [$course, $mod] = get_course_and_cm_from_cmid($modcontext->instanceid);
+    require_capability('mod/' . $mod->modname . ':view', $modcontext);
+
+    if ($mod && $mod->uservisible) {
+        if (array_search($mod->modname, explode(",", get_config('format_tiles', 'modalmodules'))) === false) {
+            throw new invalid_parameter_exception('Not allowed to call this mod type - disabled by site admin');
+        }
+        if ($mod->modname == 'page') {
+            // Record from the page table.
+            $record = $DB->get_record($mod->modname, array('id' => $mod->instance), 'intro, content, revision, contentformat');
+            $renderer = $PAGE->get_renderer('format_tiles');
+            return $renderer->format_cm_content_text($mod, $record, $modcontext);
+        } else {
+            throw new invalid_parameter_exception('Only page modules allowed through this service');
+        }
+    }
+    // Throw error if user is not allowed to see this module.
+    require_capability('moodle/course:viewhiddensections', $args['context']);
 }
