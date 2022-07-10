@@ -922,6 +922,7 @@ class course_output implements \renderable, \templatable {
         $moduleobject['available'] = $mod->available;
         $moduleobject['cmid'] = $mod->id;
         $moduleobject['activityname'] = $mod->get_formatted_name();
+        $moduleobject['contextid'] = \context_module::instance($mod->id)->id;
         $moduleobject['modname'] = $mod->modname;
         $moduleobject['iconurl'] = $mod->get_icon_url()->out(true);
         $moduleobject['url'] = $mod->url;

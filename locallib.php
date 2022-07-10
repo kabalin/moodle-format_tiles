@@ -84,3 +84,43 @@ function format_tiles_width_template_data($courseid) {
         return array('hidetilesinitially' => 0);
     }
 }
+
+/**
+ * Generate html for course module content
+ * (i.e. for the time being, the content of a page
+ * Necessary to ensure that references to src="@@PLUGINFILE@@..." in $record->content
+ * are re-written to the correct URL
+ *
+ * @param cm_info $mod the course module
+ * @param stdClass $record the database record from the module table (e.g. the page table if it's a page)
+ * @param context $context the context of the course module.
+ * @return string HTML to output.
+ */
+function format_tiles_cm_content_text($mod, $record, $context) {
+    $text = '';
+    if (isset($record->intro)) {
+        $text .= file_rewrite_pluginfile_urls(
+            $record->intro,
+            'pluginfile.php',
+            $context->id,
+            'mod_' . $mod->modname,
+            'intro',
+            null
+        );
+    }
+    if (isset($record->content)) {
+        $text .= file_rewrite_pluginfile_urls(
+            $record->content,
+            'pluginfile.php',
+            $context->id,
+            'mod_' . $mod->modname,
+            'content',
+            $record->revision
+        );
+    }
+    $formatoptions = new stdClass();
+    $formatoptions->noclean = true;
+    $formatoptions->overflowdiv = true;
+    $formatoptions->context = $context;
+    return format_text($text, $record->contentformat, $formatoptions);
+}

@@ -56,16 +56,6 @@ $functions = array (
         'loginrequired' => true,
         'capabilities' => ''  // Enrolment check, not capability - see externallib.php.
     ),
-    'format_tiles_get_mod_page_html' => array(
-        'classname' => 'format_tiles_external',
-        'methodname' => 'get_mod_page_html',
-        'classpath' => 'course/format/tiles/externallib.php',
-        'description' => 'Return the HTML for a page course module (for modal use)',
-        'type' => 'read',
-        'ajax' => true,
-        'loginrequired' => true,
-        'capabilities' => 'mod/page:view'
-    ),
     'format_tiles_get_icon_set' => array(
         'classname' => 'format_tiles_external',
         'methodname' => 'get_icon_set',

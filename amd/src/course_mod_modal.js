@@ -27,8 +27,8 @@
  * @since       Moodle 3.3
  */
 
-define(["jquery", "core/modal_factory", "core/config", "core/templates", "core/notification", "core/ajax"],
-    function ($, modalFactory, config, Templates, Notification, ajax) {
+define(["jquery", "core/modal_factory", "core/config", "core/templates", "core/notification", "core/ajax", 'core/fragment'],
+    function ($, modalFactory, config, Templates, Notification, ajax, Fragment) {
         "use strict";
 
         /**
@@ -427,44 +427,40 @@ define(["jquery", "core/modal_factory", "core/config", "core/templates", "core/n
          * @returns {boolean} if successful or not
          */
         var launchCourseActivityModal = function (clickedCmObject) {
-            var cmid = clickedCmObject.attr("data-cmid");
+            var cmid = clickedCmObject.data('cmid');
+            var moduleContextId = clickedCmObject.data('contextid');
             // TODO code envisages potentially adding in other web services for other mod types, but for now we have page only.
-            var methodName = "format_tiles_get_mod_" + clickedCmObject.attr("data-modtype") + "_html";
+            var fragmentName = "get_mod_" + clickedCmObject.data('modtype');
+            var modalRoot;
 
             modalFactory.create({
                 type: modalFactory.types.DEFAULT,
-                title: clickedCmObject.attr("data-title"),
+                title: clickedCmObject.data('title'),
                 body: loadingIconHtml
-            }).done(function (modal) {
+            }).then(function (modal) {
                 modalStore[cmid] = modal;
                 modal.setLarge();
                 modal.show();
-                var modalRoot = $(modal.root);
+                modalRoot = $(modal.root);
                 modalRoot.attr("data-cmid", cmid);
                 modalRoot.attr("data-section", clickedCmObject.closest(Selector.sectionMain).attr("data-section"));
                 modalRoot.attr("id", "embed_mod_modal_" + cmid);
                 modalRoot.addClass("embed_cm_modal");
-                modalRoot.addClass('mod_' + clickedCmObject.attr("data-modtype"));
+                modalRoot.addClass('mod_' + clickedCmObject.data('modtype'));
                 stopAllVideosOnDismiss(modalRoot);
-                ajax.call([{
-                    methodname: methodName,
-                    args: {
-                        courseid: courseId,
-                        cmid: cmid
-                    }
-                }])[0].done(function(response) {
-                    renderModalHeader(clickedCmObject, modalRoot, '', false, false);
-                    modal.setBody(response.html);
-
-                    return true;
-                }).fail(function(ex) {
-                    if (config.developerdebug !== true) {
-                        // Load the activity using PHP instead.
-                        window.location = config.wwwroot + "/mod/" + clickedCmObject.attr("data-modtype") + "/view.php?id=" + cmid;
-                    } else {
-                        Notification.exception(ex);
-                    }
-                });
+                return Fragment.loadFragment('format_tiles', fragmentName, moduleContextId, {});
+            }).then(function(html, js) {
+                renderModalHeader(clickedCmObject, modalRoot, '', false, false);
+                modalStore[cmid].setBody(html);
+                Templates.runTemplateJS(js);
+                return true;
+            }).fail(function(ex) {
+                if (config.developerdebug !== true) {
+                    // Load the activity using PHP instead.
+                    window.location = config.wwwroot + "/mod/" + clickedCmObject.attr("data-modtype") + "/view.php?id=" + cmid;
+                } else {
+                    Notification.exception(ex);
+                }
             });
             return false;
         };
